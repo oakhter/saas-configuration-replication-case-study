@@ -1,10 +1,10 @@
 # Schema-Driven SaaS Configuration Replication
 
-A case study in turning an under-documented settings API into a safe workflow for reproducing SaaS account configurations—and giving troubleshooting time back to the people investigating the actual issue.
+A case study in turning an under-documented settings API into a safe workflow for reproducing SaaS account configurations—and freeing my Tier 2 troubleshooting time for the actual issue.
 
-> **Success metric:** Shifted up to **~1 engineer-hour per investigation** from manual configuration adjustment to diagnosis, while expanding repeatable coverage from roughly **10–20 manually selected fields to 179 validated fields**—about **9–18× broader coverage**.
+> **Demonstrated personal impact:** In my own Tier 2 workflow, the tool automated configuration work that had consumed up to **~1 hour of a typical 2-hour investigation**, while expanding repeatable coverage from roughly **10–20 manually selected fields to 179 validated fields**—about **9–18× broader coverage**.
 
-*The time baseline is an experience-based estimate from real investigations, not a controlled benchmark. The coverage comparison uses the 179 active schema fields against the 10–20 fields typically aligned by hand.*
+*The time baseline is an experience-based estimate from my own investigations, not a controlled benchmark. The tool was built for my use and had not been rolled out to other technicians; wider support and engineering benefits are potential, not measured results.*
 
 > **Repository note:** This case study is intentionally sanitized. It does not contain the production tool, proprietary configuration registry, credentials, or customer data.
 
@@ -15,7 +15,8 @@ A case study in turning an under-documented settings API into a safe workflow fo
 | **Business problem** | Manual setup consumed about half of a typical two-hour investigation and still produced incomplete environment parity |
 | **My contribution** | API investigation, field validation, configuration modeling, workflow architecture, safeguards, and test design |
 | **Configuration mapped** | 188 settings: 179 approved for automation and 9 deliberately excluded |
-| **What shipped** | A desktop workflow for compare, plan, replicate, verify, audit, and Restore |
+| **What I built** | A desktop workflow for compare, plan, replicate, verify, audit, and Restore |
+| **Adoption status** | Built for and used in my own Tier 2 workflow; not yet rolled out to other technicians |
 | **Evidence** | 97 passing offline tests plus successful live sandbox replication |
 
 ## Contents
@@ -33,9 +34,9 @@ A case study in turning an under-documented settings API into a safe workflow fo
 
 Reproducing a customer or test environment for troubleshooting required manually comparing settings spread across several areas of a SaaS product.
 
-From my direct experience, an issue investigation often took at least two hours, with roughly one hour spent adjusting just 10–20 settings believed to be relevant. That was expensive and still did not establish full configuration parity across a surface of nearly 200 mapped settings.
+From my direct experience as a Tier 2 technician, an issue investigation often took at least two hours, with roughly one hour spent adjusting just 10–20 settings believed to be relevant. That consumed time I could have spent diagnosing the issue and still did not establish full configuration parity across a surface of nearly 200 mapped settings.
 
-Missing one dependency or unexpected difference could create an inaccurate reproduction environment. The investigation could then follow a false lead—or reach engineering as an apparent product defect when configuration drift was the real cause.
+Missing one dependency or unexpected difference could create an inaccurate reproduction environment. A Tier 2 investigation could then follow a false lead, and any resulting Jira could reach engineering without strong evidence that configuration drift had been ruled out.
 
 The apparent automation was simple:
 
@@ -151,12 +152,16 @@ Live sandbox testing validated the end-to-end workflow and exposed response shap
 
 *A completed sandbox run: 30 settings updated, 137 already matched, and no failed updates or verification failures. Unsafe or unsupported fields remained visible instead of being silently forced.*
 
-The workflow delivered four practical outcomes:
+### Demonstrated in my workflow
 
-- **More time for diagnosis:** up to roughly one hour of a typical investigation could be redirected from configuration adjustment to the underlying issue.
-- **Broader reproduction coverage:** 179 validated fields could be considered consistently instead of manually selecting about 10–20 likely candidates.
-- **Fewer false leads:** verified configuration parity reduced the chance that hidden drift would be mistaken for a product defect and passed downstream to engineering.
+- **Direct Tier 2 time savings:** up to roughly one hour of a typical investigation could be redirected from configuration adjustment to the underlying issue.
+- **Broader personal reproduction coverage:** 179 validated fields could be considered consistently instead of manually selecting about 10–20 likely candidates.
 - **Safer operations:** explicit exclusions, dependency planning, audit logs, and run-specific Restore made automation reversible and explainable.
+
+### Potential with broader adoption
+
+- **Tier 2 reuse:** other technicians could spend less time recreating configurations and more time diagnosing customer issues.
+- **Higher-quality Jira escalations:** verified configuration snapshots could help Tier 2 provide stronger reproduction evidence and indirectly reduce engineering time spent clarifying environment differences.
 
 The most durable result was the configuration model itself: knowledge that had lived in manual testing and individual familiarity became explicit, reviewable, machine-readable rules.
 
