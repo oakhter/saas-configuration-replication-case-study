@@ -1,82 +1,85 @@
 # Schema-Driven SaaS Configuration Replication
 
-A case study in turning an under-documented SaaS settings API into a safe, repeatable workflow for comparing, replicating, verifying, and restoring account configurations.
+A case study in turning an under-documented settings API into a safe workflow for reproducing SaaS account configurations—and giving troubleshooting time back to the people investigating the actual issue.
 
-> **Note:** This repository is intentionally sanitized. It contains the engineering case study, not the production tool or proprietary configuration data.
+> **Success metric:** Shifted up to **~1 engineer-hour per investigation** from manual configuration adjustment to diagnosis, while expanding repeatable coverage from roughly **10–20 manually selected fields to 179 validated fields**—about **9–18× broader coverage**.
+
+*The time baseline is an experience-based estimate from real investigations, not a controlled benchmark. The coverage comparison uses the 179 active schema fields against the 10–20 fields typically aligned by hand.*
+
+> **Repository note:** This case study is intentionally sanitized. It does not contain the production tool, proprietary configuration registry, credentials, or customer data.
 
 ## At a glance
 
 | | |
 | --- | --- |
-| **Challenge** | Replace a slow, error-prone manual account comparison process without treating every API field as safe to copy |
-| **My contribution** | API investigation, field validation, configuration modeling, workflow design, safeguards, and test design |
+| **Business problem** | Manual setup consumed about half of a typical two-hour investigation and still produced incomplete environment parity |
+| **My contribution** | API investigation, field validation, configuration modeling, workflow architecture, safeguards, and test design |
 | **Configuration mapped** | 188 settings: 179 approved for automation and 9 deliberately excluded |
-| **Validation** | 97 passing offline tests plus live sandbox replication |
-| **Core outcome** | A deterministic workflow with dependency planning, read-after-write verification, field-level audit logs, and run-specific Restore |
+| **What shipped** | A desktop workflow for compare, plan, replicate, verify, audit, and Restore |
+| **Evidence** | 97 passing offline tests plus successful live sandbox replication |
 
 ## Contents
 
-- [The problem](#the-problem)
-- [My role](#my-role)
-- [The approach](#the-approach)
-- [How the workflow operates](#how-the-workflow-operates)
-- [Safety and failure handling](#safety-and-failure-handling)
-- [Results](#results)
-- [What I learned](#what-i-learned)
+- [Business problem](#business-problem)
+- [My contribution](#my-contribution)
+- [Solution](#solution)
+- [How it works](#how-it-works)
+- [Evidence and outcomes](#evidence-and-outcomes)
+- [Lessons](#lessons)
 - [Repository scope](#repository-scope)
-- [Key design decisions](docs/key-decisions.md)
+- [Technical decision record](docs/key-decisions.md)
 
-## The problem
+## Business problem
 
-Recreating a customer or test environment for troubleshooting required manually comparing settings spread across several areas of a SaaS product.
+Reproducing a customer or test environment for troubleshooting required manually comparing settings spread across several areas of a SaaS product.
 
-The apparent solution was simple:
+From my direct experience, an issue investigation often took at least two hours, with roughly one hour spent adjusting just 10–20 settings believed to be relevant. That was expensive and still did not establish full configuration parity across a surface of nearly 200 mapped settings.
+
+Missing one dependency or unexpected difference could create an inaccurate reproduction environment. The investigation could then follow a false lead—or reach engineering as an apparent product defect when configuration drift was the real cause.
+
+The apparent automation was simple:
 
 ```text
 GET settings from Account A
 → PUT settings into Account B
 ```
 
-But the API did not provide a trustworthy configuration model. Before any setting could be copied safely, the workflow needed to know:
+But a trustworthy workflow first needed to determine:
 
-- whether the UI setting was exposed and writable through the API;
-- which values were accepted and what they meant in the UI;
-- whether another setting or account-level module was required;
-- whether the field should be excluded from automation;
+- which UI settings were writable through the API;
+- which values were accepted and what they meant;
+- which settings depended on other settings or external modules;
+- which fields should not be automated;
 - whether a successful response actually changed the target; and
-- how the target could be restored to its previous state.
+- how to restore the target safely.
 
 The API existed. The reliable operating rules did not.
 
-## My role
+## My contribution
 
-My primary contribution was the investigation and modeling that made the automation dependable. My work included:
+My primary contribution was the investigation and configuration modeling that made the automation dependable. I:
 
-- testing settings individually in sandbox accounts and comparing API behavior with the UI;
-- mapping accepted values, dependencies, external prerequisites, and exclusions;
-- designing a machine-readable configuration schema as an explicit allowlist;
-- defining the compare, plan, replicate, verify, audit, and Restore workflows;
-- adding identity, secret-handling, validation, and rollback safeguards;
-- improving request efficiency without obscuring dependency-sensitive updates; and
-- turning live-test findings into schema rules and automated test cases.
+- tested settings individually in sandbox accounts and compared API behavior with the UI;
+- mapped accepted values, dependencies, external prerequisites, and exclusions;
+- designed a machine-readable schema as an explicit automation allowlist;
+- defined the comparison, planning, replication, verification, audit, and Restore workflows;
+- added account-identity, secret-handling, validation, and rollback safeguards;
+- reduced unnecessary API requests without hiding dependency-sensitive updates; and
+- converted live-test findings into schema rules and regression tests.
 
-The implementation was built around that configuration model instead of scattering product-specific behavior throughout the application.
+The implementation was built around the resulting configuration model instead of scattering product-specific conditions throughout the application.
 
-## The approach
+## Solution
 
-### 1. Discover the real API behavior
+### 1. Discover the real behavior
 
-Each candidate setting was tested against a sandbox account and checked in the product UI. This established the API parameter, accepted values, UI meaning, write behavior, and prerequisites for each field.
+Each candidate setting was tested in a sandbox and checked against the product UI. This established its API parameter, accepted values, UI meaning, write behavior, and prerequisites.
 
-That investigation produced a registry of:
+The investigation produced a registry of **188 settings**: **179 active** fields approved for automation and **9 ignored** fields deliberately excluded.
 
-- **188 total settings**
-- **179 active settings** approved for automation
-- **9 ignored settings** deliberately excluded
+### 2. Turn product knowledge into data
 
-### 2. Encode the knowledge as data
-
-The validated behavior was captured in a YAML schema. A simplified public example is shown below:
+The validated behavior was captured in YAML. A simplified public example looks like this:
 
 ```yaml
 - field_name: Example Feature
@@ -89,116 +92,82 @@ The validated behavior was captured in a YAML schema. A simplified public exampl
   status: active
 ```
 
-The schema acts as an allowlist: the workflow operates only on reviewed fields marked `active`. Dependencies, warnings, and exceptional read formats are modeled alongside the field rather than hard-coded into the execution engine.
+The schema is an allowlist. The workflow operates only on reviewed fields marked `active`; dependencies, warnings, and exceptional read formats are defined alongside each field.
 
-### 3. Plan before changing anything
+### 3. Build an execution plan before mutation
 
-Before mutation, the workflow:
+Before changing the target, the workflow validates the full schema, resolves both account identities, reads and normalizes their configurations, rejects unknown source values, calculates the desired-state difference, and plans prerequisite order and safe batching.
 
-1. validates the complete schema;
-2. resolves source and target identities from their credentials;
-3. blocks execution if both credentials identify the same account;
-4. reads and normalizes both configurations;
-5. validates source values against the schema;
-6. calculates only the changes needed; and
-7. determines prerequisite order, warnings, and safe batching.
+### 4. Verify, audit, and preserve a Restore point
 
-### 4. Verify and preserve evidence
+Every mutation is followed by a fresh read of the target. The returned state—not the HTTP status alone—determines each field's result.
 
-After each mutation, the target is read again. The returned state—not the HTTP status alone—determines whether each field succeeded.
+Each run stores before-and-after snapshots, field-level outcomes, resolved target identity without credentials, and a run-specific pre-change snapshot for Restore.
 
-Every run records:
-
-- target state before and after replication;
-- source values used for the run;
-- field-level outcomes and explanations;
-- resolved account identity, without credentials; and
-- a run-specific snapshot that can restore the target later.
-
-## How the workflow operates
+## How it works
 
 ```text
-Resolve account identities
-          ↓
+Resolve source and target identities
+                ↓
 Validate schema and block same-account runs
-          ↓
-Read source and target settings
-          ↓
-Normalize and validate known fields
-          ↓
-Compare desired and current state
-          ↓
+                ↓
+Read, normalize, and compare configurations
+                ↓
 Plan dependencies, warnings, and safe batches
-          ↓
+                ↓
 Apply changes and read the target again
-          ↓
+                ↓
 Record field-level results and snapshots
-          ↓
-Offer Restore from this run's pre-change state
+                ↓
+Restore later from this run's pre-change state
 ```
 
-Independent settings are combined into a bulk request. Settings involved in active dependency relationships remain explicit and ordered:
+Independent settings are combined into a bulk request. Dependency-sensitive settings stay explicit and ordered:
 
 ```text
 update prerequisite → verify prerequisite
                     → update dependent → verify dependent
 ```
 
-This reduces unnecessary API calls while keeping risky changes observable.
+The workflow fails narrowly and visibly:
 
-## Safety and failure handling
+- malformed schemas and same-account runs are blocked before mutation;
+- unsupported values and unmet dependencies are skipped at field level;
+- successful API responses that do not produce the requested state fail verification;
+- external module requirements remain visible as manual warnings; and
+- credentials are redacted and excluded from operational artifacts.
 
-The workflow is designed to fail narrowly and explainably.
+For the deeper rationale, alternatives, and tradeoffs, see the [technical decision record](docs/key-decisions.md).
 
-| Situation | Behavior |
-| --- | --- |
-| Malformed schema or dependency cycle | Stop before contacting or modifying the target |
-| Source and target resolve to the same account | Block the run |
-| Unsupported source value | Mark that field `INVALID_SOURCE_VALUE`; continue with other valid fields |
-| Unmet prerequisite | Mark the dependent field `SKIPPED_DEPENDENCY` |
-| External module may be required | Show a manual warning without misclassifying a successful update |
-| API accepts a request but state does not match | Mark the field `VERIFICATION_FAILED` |
-| Transient API error | Retry with bounded backoff |
-| Permanent API error | Fail without unlimited retries |
-| Restore requested for a different target | Block Restore after rechecking account identity |
+## Evidence and outcomes
 
-Credentials are redacted from logs and excluded from snapshots and run metadata. User-facing network errors are sanitized as well.
+The completed implementation reached **97 passing offline tests** across schema validation, value handling, execution planning, verification, identity checks, secret redaction, Restore behavior, and UI state.
 
-## Results
-
-The project replaced an informal, manual process with a controlled workflow capable of:
-
-- comparing only reviewed and supported settings;
-- applying independent changes efficiently;
-- respecting prerequisite order for replication and Restore;
-- isolating invalid values instead of terminating the whole run;
-- verifying the resulting state field by field;
-- producing before/after snapshots and an audit trail; and
-- restoring the target from a specific historical run.
+Live sandbox testing validated the end-to-end workflow and exposed response shapes that initial field mapping had missed. Those findings were modeled explicitly and added as regression tests rather than handled with broad assumptions.
 
 ### Successful sandbox run
 
 ![The desktop replication tool after a completed run. The summary reports 30 successful updates, 137 settings already matched, no failed updates or verification failures, and clearly identifies skipped dependencies, invalid source values, ignored fields, and manual warnings.](docs/assets/replication-success.png)
 
-*A completed sandbox run. Successful changes and already-matching settings are summarized alongside fields that were deliberately skipped or flagged for review.*
+*A completed sandbox run: 30 settings updated, 137 already matched, and no failed updates or verification failures. Unsafe or unsupported fields remained visible instead of being silently forced.*
 
-The completed implementation reached **97 passing offline tests**, covering schema validation, value handling, execution planning, verification, identity checks, secret redaction, Restore behavior, and UI state. Live sandbox runs were used to validate the end-to-end workflow and turn unexpected API responses into regression tests.
+The workflow delivered four practical outcomes:
 
-The most durable outcome was the configuration model: product knowledge that had existed through manual testing and individual familiarity became explicit, reviewable, machine-readable rules.
+- **More time for diagnosis:** up to roughly one hour of a typical investigation could be redirected from configuration adjustment to the underlying issue.
+- **Broader reproduction coverage:** 179 validated fields could be considered consistently instead of manually selecting about 10–20 likely candidates.
+- **Fewer false leads:** verified configuration parity reduced the chance that hidden drift would be mistaken for a product defect and passed downstream to engineering.
+- **Safer operations:** explicit exclusions, dependency planning, audit logs, and run-specific Restore made automation reversible and explainable.
 
-## What I learned
+The most durable result was the configuration model itself: knowledge that had lived in manual testing and individual familiarity became explicit, reviewable, machine-readable rules.
+
+## Lessons
 
 The difficult part was not sending an API request; it was establishing when that request was safe.
 
-Three lessons shaped the final design:
-
-1. **Configuration knowledge is part of the system.** Field meanings, prerequisites, and exclusions must be modeled and validated like code.
+1. **Configuration knowledge is part of the system.** Field meanings, prerequisites, and exclusions need the same rigor as application code.
 2. **Transport success is not business success.** A `200` response is insufficient when the target may ignore or reinterpret a value.
-3. **Rollback needs provenance.** A Restore point must belong to a specific run and target account, not to a replaceable global backup.
-
-Live testing reinforced the need for explicit handling of irregular data. For example, some logically scalar settings were returned as one-element lists. Rather than flattening every list and risking data loss, only identified fields received schema-defined normalization; unknown multi-value shapes remained invalid and visible.
-
-For the reasoning, alternatives, and tradeoffs behind these choices, see [Key design decisions](docs/key-decisions.md).
+3. **Coverage changes troubleshooting quality.** Matching only the suspected fields is faster than matching everything manually, but it can preserve the very difference causing the issue.
+4. **Rollback needs provenance.** A Restore point must belong to a specific run and target account, not a replaceable global backup.
 
 ## Skills demonstrated
 
@@ -218,4 +187,4 @@ It intentionally excludes production source code, the real configuration registr
 
 ## Further reading
 
-- [Key design decisions](docs/key-decisions.md) — detailed rationale, alternatives, and tradeoffs for the architecture
+- [Key design decisions](docs/key-decisions.md) — detailed context, rationale, alternatives, and tradeoffs behind the architecture
