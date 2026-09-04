@@ -176,6 +176,12 @@ The project replaced an informal, manual process with a controlled workflow capa
 - producing before/after snapshots and an audit trail; and
 - restoring the target from a specific historical run.
 
+### Successful sandbox run
+
+![The desktop replication tool after a completed run. The summary reports 30 successful updates, 137 settings already matched, no failed updates or verification failures, and clearly identifies skipped dependencies, invalid source values, ignored fields, and manual warnings.](docs/assets/replication-success.png)
+
+*A completed sandbox run. Successful changes and already-matching settings are summarized alongside fields that were deliberately skipped or flagged for review.*
+
 The completed implementation reached **97 passing offline tests**, covering schema validation, value handling, execution planning, verification, identity checks, secret redaction, Restore behavior, and UI state. Live sandbox runs were used to validate the end-to-end workflow and turn unexpected API responses into regression tests.
 
 The most durable outcome was the configuration model: product knowledge that had existed through manual testing and individual familiarity became explicit, reviewable, machine-readable rules.
@@ -208,7 +214,7 @@ For the reasoning, alternatives, and tradeoffs behind these choices, see [Key de
 
 This repository is a **case study**, not a distributable copy of the internal application.
 
-It intentionally excludes production source code, the real configuration registry, API endpoints and field names, customer data, credentials, run artifacts, logs, and branded screenshots. All examples are synthetic and demonstrate the engineering approach without exposing proprietary information.
+It intentionally excludes production source code, the real configuration registry, API endpoints and field names, customer data, credentials, run artifacts, logs, and branded product screenshots. All examples are synthetic and demonstrate the engineering approach without exposing proprietary information.
 
 ## Further reading
 
